@@ -27,7 +27,7 @@ This project is a high-performance, premium Map UI built as a portfolio piece. I
 
 1. **Clone the repository:**
    ```bash
-   git clone <your-repo-url>
+   git clone https://github.com/WSTym/map-ui-portfolio.git
    cd map-ui-portfolio
    ```
 
