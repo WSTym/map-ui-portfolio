@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <title>Fuel Stations Map</title>
+    <!-- Leaflet & Clustering CSS -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.4.1/dist/MarkerCluster.css" />
+    <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.4.1/dist/MarkerCluster.Default.css" />
+  </head>
+  <body>
+    <div id="app">
+      <!-- Full-screen Map Container -->
+      <div id="map"></div>
+
+      <!-- Glassmorphism Sidebar / Mobile Bottom Sheet -->
+      <aside id="sidebar" class="glass-panel">
+        <div class="mobile-handle" id="mobile-handle"></div>
+        
+        <header class="sidebar-header">
+          <h1>Explore Stations</h1>
+          <div class="filters-group">
+            <button class="chip-btn active" id="btn-this-area">📍 This Area</button>
+            <button class="chip-btn" id="btn-near-me">🗺️ Near Me</button>
+          </div>
+          <div class="filters-group" style="margin-bottom: 0;">
+             <button class="chip-btn" id="filter-open">Open Now</button>
+             <button class="chip-btn" id="filter-price">Has Price</button>
+          </div>
+        </header>
+
+        <div class="stations-list" id="stations-list">
+          <div class="empty-state">
+            <span style="font-size: 2rem;">🌎</span>
+            <p>Loading stations in this area...</p>
+          </div>
+        </div>
+      </aside>
+    </div>
+    
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
