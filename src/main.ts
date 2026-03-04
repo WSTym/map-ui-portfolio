@@ -80,7 +80,7 @@ function initMap() {
 
 async function loadData() {
   try {
-    const res = await fetch("/stations.json"); // served from public dir via Vite
+    const res = await fetch(`${import.meta.env.BASE_URL}stations.json`); // served from public dir via Vite
     const data = await res.json();
     allStations = data.stations || [];
     renderMarkers();
