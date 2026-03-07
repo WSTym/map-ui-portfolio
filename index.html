@@ -3,43 +3,105 @@
   <head>
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/vite.svg" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Fuel Stations Map</title>
     <!-- Leaflet & Clustering CSS -->
-    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-    <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.4.1/dist/MarkerCluster.css" />
-    <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.4.1/dist/MarkerCluster.Default.css" />
+    <link
+      rel="stylesheet"
+      href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+    />
+    <link
+      rel="stylesheet"
+      href="https://unpkg.com/leaflet.markercluster@1.4.1/dist/MarkerCluster.css"
+    />
+    <link
+      rel="stylesheet"
+      href="https://unpkg.com/leaflet.markercluster@1.4.1/dist/MarkerCluster.Default.css"
+    />
   </head>
   <body>
     <div id="app">
-      <!-- Full-screen Map Container -->
-      <div id="map"></div>
+      <div class="app-layout">
+        <div class="map-container">
+          <div id="map"></div>
 
-      <!-- Glassmorphism Sidebar / Mobile Bottom Sheet -->
-      <aside id="sidebar" class="glass-panel">
-        <div class="mobile-handle" id="mobile-handle"></div>
-        
-        <header class="sidebar-header">
-          <h1>Explore Stations</h1>
-          <div class="filters-group">
-            <button class="chip-btn active" id="btn-this-area">📍 This Area</button>
-            <button class="chip-btn" id="btn-near-me">🗺️ Near Me</button>
-          </div>
-          <div class="filters-group" style="margin-bottom: 0;">
-             <button class="chip-btn" id="filter-open">Open Now</button>
-             <button class="chip-btn" id="filter-price">Has Price</button>
-          </div>
-        </header>
-
-        <div class="stations-list" id="stations-list">
-          <div class="empty-state">
-            <span style="font-size: 2rem;">🌎</span>
-            <p>Loading stations in this area...</p>
+          <div class="legend-container">
+            <div class="legend-item">
+              <div class="legend-dot open"></div>
+              <span>None / Short Queue</span>
+            </div>
+            <div class="legend-item">
+              <div class="legend-dot limited"></div>
+              <span>Medium Queue</span>
+            </div>
+            <div class="legend-item">
+              <div class="legend-dot closed"></div>
+              <span>Long Queue</span>
+            </div>
+            <div class="legend-item">
+              <div class="legend-dot unknown"></div>
+              <span>Closed / Unknown</span>
+            </div>
           </div>
         </div>
-      </aside>
+
+        <aside class="sidebar">
+          <header class="header">
+            <div class="brand">
+              <svg
+                class="brand-logo"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+              >
+                <path
+                  d="M12 2C8.686 2 6 4.686 6 8c0 4 6 12 6 12s6-8 6-12c0-3.314-2.686-6-6-6z"
+                />
+                <circle cx="12" cy="8" r="2" fill="currentColor" />
+              </svg>
+              <h1 class="brand-name">fuelnaija</h1>
+            </div>
+
+            <div class="search-container">
+              <input
+                type="text"
+                id="searchInput"
+                class="search-input"
+                placeholder="Search by station name, brand, or area"
+              />
+            </div>
+
+            <div class="filters-container">
+              <button class="filter-chip active" data-filter="all">All</button>
+              <button class="filter-chip" data-filter="available">
+                Available
+              </button>
+              <button class="filter-chip" data-filter="open">Open</button>
+              <button class="filter-chip" data-filter="near_me">Near Me</button>
+            </div>
+
+            <button id="locationBtn" class="location-btn">
+              <span style="color: #e91e63; margin-right: 8px; font-size: 1.1em"
+                >📍</span
+              >
+              Use My Location
+            </button>
+
+            <div id="statusText" class="status-text">
+              Click to find nearest stations
+            </div>
+          </header>
+
+          <div class="stations-container">
+            <h2 class="stations-title">Fuel Stations</h2>
+            <div id="stationsList">
+              <div class="loading">Loading stations...</div>
+            </div>
+          </div>
+        </aside>
+      </div>
     </div>
-    
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>

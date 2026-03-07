@@ -2,304 +2,423 @@ import "./style.css";
 import L from "leaflet";
 import "leaflet.markercluster";
 
-// --- Types ---
-interface Station {
-  id: string;
-  name: string;
-  area: string;
-  status: "Open" | "Closed" | "Unknown";
-  fuel: "Available" | "Low" | "Unavailable" | "Unknown";
-  queue: "Short" | "Medium" | "Long" | "Empty";
-  price: number | null;
-  lastUpdated: string;
-  lat: number;
-  lng: number;
-}
-
-// --- Global State ---
-let map: L.Map;
-let markerClusterGroup: L.MarkerClusterGroup;
-let allStations: Station[] = [];
-let markersMap = new Map<string, L.Marker>();
-
-// Filter states
-let activeMode: "This Area" | "Near Me" = "This Area";
-let filterOpenOnly = false;
-let filterHasPriceOnly = false;
-let userLocation: L.LatLng | null = null;
-
-// --- DOM Elements ---
-const listContainer = document.getElementById("stations-list")!;
-const btnThisArea = document.getElementById("btn-this-area")!;
-const btnNearMe = document.getElementById("btn-near-me")!;
-const filterOpen = document.getElementById("filter-open")!;
-const filterPrice = document.getElementById("filter-price")!;
-const mobileHandle = document.getElementById("mobile-handle")!;
-const sidebar = document.getElementById("sidebar")!;
-
-// --- Initialization ---
-async function init() {
-  initMap();
-  setupEventListeners();
-  await loadData();
-}
-
-function initMap() {
-  // Center roughly at Sao Paulo as default from mock
-  map = L.map("map", {
-    zoomControl: false, // we will add it to the top-left later maybe
-  }).setView([-23.5505, -46.6333], 12);
-
-  L.control.zoom({ position: "topleft" }).addTo(map);
-
-  // Dark Tiles from CartoDB
-  L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png", {
-    attribution:
-      '&copy; <a href="https://www.openstreetmap.org/copyright">OSM</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>',
-    subdomains: "abcd",
-    maxZoom: 20,
-  }).addTo(map);
-
-  // Initialize Marker Cluster plugin
-  markerClusterGroup = L.markerClusterGroup({
-    spiderfyOnMaxZoom: true,
-    showCoverageOnHover: false,
-    zoomToBoundsOnClick: true,
-    maxClusterRadius: 50, // Better performance & grouping
-  });
-
-  map.addLayer(markerClusterGroup);
-
-  // Map sync event
-  map.on("moveend", () => {
-    if (activeMode === "This Area") {
-      updateListView();
-    }
-  });
-}
-
-async function loadData() {
-  try {
-    const res = await fetch(`${import.meta.env.BASE_URL}stations.json`); // served from public dir via Vite
-    const data = await res.json();
-    allStations = data.stations || [];
-    renderMarkers();
-    updateListView();
-  } catch (error) {
-    listContainer.innerHTML = `<div class="empty-state">❌ Failed to load data</div>`;
+class g {
+  map = null;
+  userLocation = null;
+  stations = [];
+  markers = [];
+  userMarker = null;
+  nearestMarker = null;
+  markerClusterGroup = null;
+  allStations = [];
+  filteredStations = [];
+  constructor() {
+    (this.initMap(),
+      this.loadStations(),
+      this.setupEventListeners(),
+      this.startTimeUpdater());
   }
-}
+  initMap() {
+    if ((console.log("Initializing map..."), !document.getElementById("map"))) {
+      console.error("Map element not found!");
+      return;
+    }
+    console.log("Map element found, creating Leaflet map...");
+    try {
+      ((this.map = L.map("map").setView([6.5244, 3.3792], 11)),
+        console.log("Map created, adding tile layer..."),
+        L.tileLayer(
+          "https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png",
+          {
+            attribution:
+              '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>',
+            subdomains: "abcd",
+            maxZoom: 20,
+          },
+        ).addTo(this.map),
+        console.log("Tile layer added, map should be visible"),
+        (this.markerClusterGroup = L.markerClusterGroup({
+          iconCreateFunction: (t) => this.createClusterIcon(t),
+          spiderfyOnMaxZoom: !0,
+          showCoverageOnHover: !1,
+          zoomToBoundsOnClick: !0,
+          maxClusterRadius: 50,
+        })),
+        this.map.addLayer(this.markerClusterGroup),
+        setTimeout(() => {
+          this.map &&
+            (this.map.invalidateSize(), console.log("Map size invalidated"));
+        }, 100));
+    } catch (t) {
+      console.error("Error initializing map:", t);
+    }
+  }
+  createClusterIcon(e) {
+    const t = e.getAllChildMarkers(),
+      s = t.length;
+    let greenCount = 0, // open + none/short
+      redCount = 0, // open + long
+      greyCount = 0, // closed or unknown
+      yellowCount = 0; // open + medium
+    t.forEach((l) => {
+      const status = l.options.stationStatus;
+      const queue = l.options.stationQueue;
 
-// --- Markers & Clusters logic ---
-function renderMarkers() {
-  markerClusterGroup.clearLayers();
-  markersMap.clear();
-
-  // Create custom icon
-  const customIcon = L.divIcon({
-    className: "custom-station-icon",
-    html: `<div style="background:var(--accent-color);width:16px;height:16px;border-radius:50%;border:2px solid var(--bg-dark);box-shadow:0 0 4px var(--accent-color);"></div>`,
-    iconSize: [16, 16],
-    iconAnchor: [8, 8],
-  });
-
-  allStations.forEach((station) => {
-    // Basic filter logic applies to map markers as well if needed?
-    // Client wants "marker clustering still works", so usually all markers stay on map,
-    // but list filters might just filter the list, or both. Let's filter both for consistency.
-    if (!passesFilters(station)) return;
-
-    const marker = L.marker([station.lat, station.lng], { icon: customIcon });
-
-    marker.on("click", () => {
-      handleStationSelect(station.id);
+      if (status === "closed") {
+        greyCount++;
+      } else if (queue === "none" || queue === "short" || queue === "empty") {
+        greenCount++;
+      } else if (queue === "medium") {
+        yellowCount++;
+      } else if (queue === "long") {
+        redCount++;
+      } else {
+        greyCount++; // fallback for null/unknown queue while open
+      }
     });
-
-    markerClusterGroup.addLayer(marker);
-    markersMap.set(station.id, marker);
-  });
-}
-
-function passesFilters(station: Station): boolean {
-  if (filterOpenOnly && station.status !== "Open") return false;
-  if (filterHasPriceOnly && station.price === null) return false;
-  return true;
-}
-
-// --- List View Logic ---
-function updateListView() {
-  let visibleStations: Station[] = [];
-
-  if (activeMode === "This Area") {
-    // Bounds check
-    const bounds = map.getBounds();
-    visibleStations = allStations.filter((s) => {
-      if (!passesFilters(s)) return false;
-      const latLng = L.latLng(s.lat, s.lng);
-      return bounds.contains(latLng);
-    });
-  } else if (activeMode === "Near Me" && userLocation) {
-    // Sort all by distance to user
-    visibleStations = allStations
-      .filter(passesFilters)
-      .map((s) => {
-        const dest = L.latLng(s.lat, s.lng);
-        const distance = userLocation!.distanceTo(dest);
-        return { ...s, distance };
+    let n = "marker-cluster-mixed";
+    const u = greenCount / s,
+      p = redCount / s,
+      m = yellowCount / s,
+      h = greyCount / s;
+    return (
+      u > 0.5
+        ? (n = "marker-cluster-open")
+        : p > 0.5
+          ? (n = "marker-cluster-closed")
+          : m > 0.5
+            ? (n = "marker-cluster-limited")
+            : h > 0.5 && (n = "marker-cluster-unknown"),
+      L.divIcon({
+        html: "<div>" + s + "</div>",
+        className: "marker-cluster " + n,
+        iconSize: L.point(40, 40),
       })
-      .sort((a, b) => a.distance - b.distance);
-  } else {
-    // If Near Me clicked without geolocation yet
-    listContainer.innerHTML = `
-      <div class="empty-state">
-         <span>📍</span>
-         <p>Getting your location...</p>
-      </div>`;
-    return;
+    );
   }
-
-  renderList(visibleStations);
-}
-
-function renderList(stations: Station[]) {
-  if (stations.length === 0) {
-    listContainer.innerHTML = `
-      <div class="empty-state">
-         <span>📭</span>
-         <p>No stations matches the current view and filters.</p>
-      </div>`;
-    return;
-  }
-
-  listContainer.innerHTML = stations
-    .map(
-      (s) => `
-    <div class="station-card" data-id="${s.id}">
-      <div class="station-title">${s.name}</div>
-      <div class="station-area">${s.area}</div>
-      <div class="station-stats">
-        <span class="status-indicator">
-           <div class="dot ${s.status === "Open" ? "open" : s.status === "Closed" ? "closed" : "unknown"}"></div>
-           ${s.status}
-        </span>
-        <span class="status-indicator">Fuel: ${s.fuel}</span>
-      </div>
-      <div class="station-stats" style="margin-top:8px;">
-        <span class="price-tag">${s.price ? "$" + s.price.toFixed(2) : "--"}</span>
-        <span style="font-size:0.8rem; color:var(--text-secondary)">Queue: ${s.queue} | ${s.lastUpdated}</span>
-      </div>
-    </div>
-  `,
-    )
-    .join("");
-
-  // Attach click events on DOM cards
-  document.querySelectorAll(".station-card").forEach((card) => {
-    card.addEventListener("click", () => {
-      handleStationSelect(card.getAttribute("data-id")!);
+  setupEventListeners() {
+    document.getElementById("locationBtn")?.addEventListener("click", () => {
+      this.requestLocation();
     });
-  });
-}
+    const e = document.getElementById("searchInput");
+    let t;
+    e?.addEventListener("input", (s) => {
+      (clearTimeout(t),
+        (t = setTimeout(() => {
+          this.filterStations(s.target.value);
+        }, 300)));
+    });
 
-// --- Interactions ---
-function handleStationSelect(id: string) {
-  // Highlight card
-  document
-    .querySelectorAll(".station-card")
-    .forEach((c) => c.classList.remove("active"));
-  const card = document.querySelector(`.station-card[data-id="${id}"]`);
-  if (card) {
-    card.classList.add("active");
-    card.scrollIntoView({ behavior: "smooth", block: "center" }); // List auto scrolls to item
+    /*
+    // Add filter chip interactivity (for next task)
+    const filterChips = document.querySelectorAll(".filter-chip");
+    filterChips.forEach((chip) => {
+      chip.addEventListener("click", (e) => {
+        // Remove active from all chips
+        filterChips.forEach((c) => c.classList.remove("active"));
+        // Add to clicked
+        const target = e.target as HTMLElement;
+        target.classList.add("active");
+
+        // simple visual status update
+        const filterStr = target.getAttribute("data-filter");
+        this.updateStatus(`Filter applied: ${filterStr}`);
+
+        if (filterStr === "near_me") {
+          this.requestLocation();
+        }
+      });
+    });
+    */
   }
-
-  // Handle Map Zoom & Popup
-  const marker = markersMap.get(id);
-  if (marker) {
-    const parent = markerClusterGroup.getVisibleParent(marker);
-    if (parent && "spiderfy" in parent) {
-      // It's inside a closed cluster. Map will fly to it and cluster will open automatically via flyTo usually,
-      // but to be safe let's zoom in.
-      map.flyTo(marker.getLatLng(), 15, { duration: 0.5 });
-    } else {
-      map.flyTo(marker.getLatLng(), 15, { duration: 0.5 });
-    }
-
-    // Simple popup as detail view constraint (or we could use the drawer)
-    const station = allStations.find((s) => s.id === id);
-    if (station) {
-      L.popup({ autoPan: true, className: "dark-popup" })
-        .setLatLng(marker.getLatLng())
-        .setContent(
-          `<b>${station.name}</b><br>${station.price ? "$" + station.price.toFixed(2) : "No Price Data"}`,
-        )
-        .openOn(map);
+  async loadStations() {
+    try {
+      const t = await (await fetch("/api/stations")).json();
+      ((this.allStations = Array.isArray(t) ? t : t.stations || []),
+        (this.stations = [...this.allStations]),
+        this.renderStations(),
+        this.addStationMarkers());
+    } catch {
+      const t = document.getElementById("stationsList");
+      t &&
+        (t.innerHTML =
+          '<div class="error">Failed to load stations. Please refresh the page.</div>');
     }
   }
-}
-
-// --- Listeners & Buttons ---
-function setupEventListeners() {
-  btnThisArea.addEventListener("click", () => {
-    activeMode = "This Area";
-    btnThisArea.classList.add("active");
-    btnNearMe.classList.remove("active");
-    updateListView();
-  });
-
-  btnNearMe.addEventListener("click", () => {
-    activeMode = "Near Me";
-    btnNearMe.classList.add("active");
-    btnThisArea.classList.remove("active");
-
-    // Start geolocation
-    if (!userLocation) {
-      updateListView(); // shows loading
-      map.locate({ setView: true, maxZoom: 14 });
-    } else {
-      updateListView();
+  async requestLocation() {
+    if (!navigator.geolocation) {
+      this.updateStatus("Geolocation not supported");
+      return;
     }
-  });
-
-  map.on("locationfound", (e) => {
-    userLocation = e.latlng;
-    // Add blue marker for user
-    L.circleMarker(userLocation, {
-      radius: 8,
-      fillColor: "#007aff",
-      color: "#fff",
-      weight: 2,
-      fillOpacity: 1,
-    }).addTo(map);
-    if (activeMode === "Near Me") updateListView();
-  });
-
-  map.on("locationerror", (e) => {
-    console.error(e.message);
-    if (activeMode === "Near Me") {
-      listContainer.innerHTML = `<div class="empty-state">❌ Location access denied.</div>`;
+    const e = document.getElementById("locationBtn");
+    (e && (e.disabled = !0), this.updateStatus("Getting your location..."));
+    const t = { enableHighAccuracy: !0, timeout: 1e4, maximumAge: 3e5 };
+    navigator.geolocation.getCurrentPosition(
+      (s) => this.onLocationSuccess(s),
+      (s) => this.onLocationError(s),
+      t,
+    );
+  }
+  async onLocationSuccess(e) {
+    ((this.userLocation = { lat: e.coords.latitude, lng: e.coords.longitude }),
+      this.userMarker && this.map.removeLayer(this.userMarker),
+      (this.userMarker = L.circleMarker(
+        [this.userLocation.lat, this.userLocation.lng],
+        { color: "#28a745", fillColor: "#28a745", fillOpacity: 0.8, radius: 8 },
+      ).addTo(this.map)),
+      this.map.setView([this.userLocation.lat, this.userLocation.lng], 13),
+      await this.loadStationsWithDistance());
+    const t = document.getElementById("locationBtn");
+    t && (t.disabled = !1);
+  }
+  onLocationError(e) {
+    let t = "Location unavailable";
+    switch (e.code) {
+      case e.PERMISSION_DENIED:
+        t = "Location permission denied";
+        break;
+      case e.POSITION_UNAVAILABLE:
+        t = "Location unavailable";
+        break;
+      case e.TIMEOUT:
+        t = "Location request timeout";
+        break;
     }
-  });
+    this.updateStatus(t);
+    const s = document.getElementById("locationBtn");
+    s && (s.disabled = !1);
+  }
+  async loadStationsWithDistance() {
+    try {
+      const e =
+          "/api/stations?lat=" +
+          this.userLocation.lat +
+          "&lon=" +
+          this.userLocation.lng,
+        s = await (await fetch(e)).json();
+      if (
+        ((this.allStations = Array.isArray(s) ? s : s.stations || []),
+        (this.stations = [...this.allStations]),
+        this.stations.length > 0)
+      ) {
+        const a = this.stations[0];
+        (this.updateStatus(
+          "Nearest station: " + a.distance.toFixed(1) + "km away",
+        ),
+          this.highlightNearestStation(a));
+      }
+      (this.renderStations(), this.addStationMarkers());
+    } catch {
+      this.updateStatus("Failed to calculate distances");
+    }
+  }
+  filterStations(e) {
+    if (!e.trim()) this.stations = [...this.allStations];
+    else {
+      const t = e.toLowerCase();
+      this.stations = this.allStations.filter(
+        (s) =>
+          (s.brand && s.brand.toLowerCase().includes(t)) ||
+          (s.name_canonical && s.name_canonical.toLowerCase().includes(t)) ||
+          (s.neighbourhood && s.neighbourhood.toLowerCase().includes(t)) ||
+          (s.lga && s.lga.toLowerCase().includes(t)),
+      );
+    }
+    (this.renderStations(),
+      this.addStationMarkers(),
+      e.trim()
+        ? this.updateStatus(
+            "Found " + this.stations.length + ' stations matching "' + e + '"',
+          )
+        : this.updateStatus("Showing all stations"));
+  }
+  highlightNearestStation(e) {
+    this.markers.forEach((s) => {
+      const a = s.getElement();
+      a && a.classList.remove("nearest-marker");
+    });
+    const t = this.markers.find((s) => s.options.stationId === e.station_id);
+    if (t) {
+      const s = t.getElement();
+      (s && s.classList.add("nearest-marker"),
+        this.markerClusterGroup.zoomToShowLayer(t, () => {
+          (this.map.setView([e.latitude, e.longitude], 15), t.openPopup());
+        }));
+    }
+  }
+  addStationMarkers() {
+    (this.markerClusterGroup.clearLayers(),
+      (this.markers = []),
+      this.stations.forEach((e) => {
+        const t = e.status || "unknown",
+          q = e.queue ? e.queue.toLowerCase() : null;
+        let a = "#9CA3AF"; // Default Grey
 
-  filterOpen.addEventListener("click", () => {
-    filterOpenOnly = !filterOpenOnly;
-    filterOpen.classList.toggle("active", filterOpenOnly);
-    renderMarkers();
-    updateListView();
-  });
+        if (t === "closed") {
+          a = "#9CA3AF"; // Grey for closed
+        } else if (q === "none" || q === "short" || q === "empty") {
+          a = "#28a745"; // Green
+        } else if (q === "medium") {
+          a = "#FFBF00"; // Yellow
+        } else if (q === "long") {
+          a = "#dc3545"; // Red
+        } else {
+          a = "#9CA3AF"; // Fallback grey
+        }
 
-  filterPrice.addEventListener("click", () => {
-    filterHasPriceOnly = !filterHasPriceOnly;
-    filterPrice.classList.toggle("active", filterHasPriceOnly);
-    renderMarkers();
-    updateListView();
-  });
-
-  // Mobile Bottom Sheet toggle
-  mobileHandle.addEventListener("click", () => {
-    sidebar.classList.toggle("expanded");
-  });
+        const i = L.circleMarker([e.latitude, e.longitude], {
+            color: a,
+            fillColor: a,
+            fillOpacity: 0.7,
+            radius: 6,
+            stationId: e.station_id,
+            stationStatus: t,
+            stationQueue: q,
+          }),
+          o = this.createPopupContent(e);
+        (i.bindPopup(o),
+          i.on("click", () => {
+            this.map.setView([e.latitude, e.longitude], 15);
+          }),
+          this.markerClusterGroup.addLayer(i),
+          this.markers.push(i));
+      }));
+  }
+  createPopupContent(e) {
+    const t = e.distance ? e.distance.toFixed(1) + "km away" : "",
+      s = e.price ? "₦" + e.price.toFixed(2) : "Price not available",
+      a = e.queue
+        ? e.queue.charAt(0).toUpperCase() + e.queue.slice(1) + " queue"
+        : "Queue unknown",
+      i = e.fuel_availability
+        ? e.fuel_availability.replace("_", " ")
+        : "Fuel status unknown";
+    return (
+      "<div><strong>" +
+      e.brand +
+      "</strong><br>" +
+      e.name_canonical +
+      "<br>" +
+      (t ? "<small>" + t + "</small><br>" : "") +
+      "<small>" +
+      s +
+      " • " +
+      a +
+      "</small><br><small>Fuel: " +
+      i +
+      "</small></div>"
+    );
+  }
+  renderStations() {
+    const e = document.getElementById("stationsList");
+    if (e) {
+      if (this.stations.length === 0) {
+        e.innerHTML = '<div class="error">No stations found</div>';
+        return;
+      }
+      ((e.innerHTML = this.stations
+        .map((t) => this.createStationCard(t))
+        .join("")),
+        e.querySelectorAll(".station-card").forEach((t, s) => {
+          t.addEventListener("click", () => {
+            const a = this.stations[s];
+            this.map.setView([a.latitude, a.longitude], 15);
+            const i = this.markers.find(
+              (o) => o.options.stationId === a.station_id,
+            );
+            i && i.openPopup();
+          });
+        }));
+    }
+  }
+  createStationCard(e) {
+    const t = e.distance
+        ? '<span class="badge badge-distance">' +
+          e.distance.toFixed(1) +
+          "km</span>"
+        : "",
+      s = e.status
+        ? '<span class="badge badge-' +
+          e.status +
+          '">' +
+          (e.status === "open" ? "Open" : "Closed") +
+          "</span>"
+        : "",
+      a = e.queue
+        ? '<span class="badge badge-queue-' +
+          e.queue.toLowerCase() +
+          '">' +
+          (e.queue.toLowerCase() === "none" ||
+          e.queue.toLowerCase() === "empty" ||
+          e.queue.toLowerCase() === "short"
+            ? "Short/None"
+            : e.queue.charAt(0).toUpperCase() + e.queue.slice(1)) +
+          " queue</span>"
+        : "",
+      i = e.fuel_availability
+        ? '<span class="badge badge-fuel-' +
+          e.fuel_availability.replace("_", "-") +
+          '">' +
+          e.fuel_availability.replace("_", " ") +
+          "</span>"
+        : "",
+      o = e.price ? "₦" + e.price.toFixed(2) : "Price not available",
+      r = e.last_updated
+        ? "Updated " + this.timeAgo(new Date(e.last_updated))
+        : "No reports yet";
+    return (
+      '<div class="station-card"><div class="station-header"><div><div class="station-brand">' +
+      e.brand +
+      '</div><div class="station-name">' +
+      e.name_canonical +
+      '</div></div></div><div class="station-location">' +
+      (e.neighbourhood || "") +
+      ", " +
+      (e.lga || "") +
+      '</div><div class="station-badges">' +
+      [t, s, a, i].filter(Boolean).join("") +
+      '</div><div class="station-price">' +
+      o +
+      '</div><div class="station-updated">' +
+      r +
+      "</div></div>"
+    );
+  }
+  updateStatus(e) {
+    const t = document.getElementById("statusText");
+    t && (t.textContent = e);
+  }
+  timeAgo(e) {
+    const s = new Date().getTime() - e.getTime(),
+      a = Math.floor(s / 6e4),
+      i = Math.floor(a / 60),
+      o = Math.floor(i / 24);
+    return a < 1
+      ? "just now"
+      : a < 60
+        ? a + " mins ago"
+        : i < 24
+          ? i + " hours ago"
+          : o + " days ago";
+  }
+  startTimeUpdater() {
+    setInterval(() => {
+      document.querySelectorAll(".station-updated").forEach((t, s) => {
+        if (this.stations[s] && this.stations[s].last_updated) {
+          const a = this.timeAgo(new Date(this.stations[s].last_updated));
+          t.textContent = "Updated " + a;
+        }
+      });
+    }, 6e4);
+  }
 }
-
-// Start
-init();
+document.addEventListener("DOMContentLoaded", () => {
+  if ((console.log("DOM loaded, checking Leaflet..."), typeof L > "u")) {
+    console.error("Leaflet library not loaded!");
+    return;
+  }
+  (console.log("Leaflet loaded, initializing app..."),
+    setTimeout(() => {
+      new g();
+    }, 200));
+});
