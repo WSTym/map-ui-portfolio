@@ -10,6 +10,10 @@ class FuelStationTracker {
   markerClusterGroup: any = null;
   allStations: any[] = []; // Store all stations for filtering
   filteredStations: any[] = [];
+  searchTerm: string = "";
+  activeFilter: string = "All"; // Active chip filter
+
+  // TS type removed
 
   constructor() {
     this.initMap();
@@ -137,6 +141,38 @@ class FuelStationTracker {
         this.filterStations(e.target.value);
       }, 300); // Debounce search
     });
+
+    // Map bounds updates
+    if (this.map) {
+      this.map.on("moveend", () => {
+        this.updateListFromBounds();
+      });
+      this.map.on("zoomend", () => {
+        this.updateListFromBounds();
+      });
+    }
+
+    // Filter Chips functionality
+    const filterChips = document.querySelectorAll(".filter-chip");
+    filterChips.forEach((chip) => {
+      chip.addEventListener("click", (e) => {
+        const target = e.target as HTMLElement;
+        const filterName = target.textContent?.trim() || "All";
+
+        // Update UI
+        filterChips.forEach((c) => c.classList.remove("active"));
+        target.classList.add("active");
+
+        // Apply filter logic
+        if (filterName === "Near Me") {
+          this.activeFilter = filterName;
+          this.requestLocation(); // Call existing geolocation method
+        } else {
+          this.activeFilter = filterName;
+          this.applyFilters();
+        }
+      });
+    });
   }
 
   async loadStations() {
@@ -247,21 +283,24 @@ class FuelStationTracker {
         this.highlightNearestStation(nearest);
       }
 
-      this.renderStations();
-      this.addStationMarkers();
+      this.applyFilters(); // Re-apply existing text/chip filters on nearest locations
     } catch (error) {
       this.updateStatus("Failed to calculate distances");
     }
   }
 
   filterStations(searchTerm: string) {
-    if (!searchTerm.trim()) {
-      // Show all stations if search is empty
-      this.stations = [...this.allStations];
-    } else {
-      // Filter stations by search term
-      const term = searchTerm.toLowerCase();
-      this.stations = this.allStations.filter((station) => {
+    this.searchTerm = searchTerm;
+    this.applyFilters();
+  }
+
+  applyFilters() {
+    let currentStations = [...this.allStations];
+
+    // 1. Text Search Filter
+    if (this.searchTerm.trim()) {
+      const term = this.searchTerm.toLowerCase();
+      currentStations = currentStations.filter((station) => {
         return (
           (station.brand && station.brand.toLowerCase().includes(term)) ||
           (station.name_canonical &&
@@ -273,21 +312,67 @@ class FuelStationTracker {
       });
     }
 
-    // Update display
-    this.renderStations();
+    // 2. Chip Filter (Available, Open)
+    if (this.activeFilter === "Available") {
+      currentStations = currentStations.filter(
+        (s) =>
+          s.fuel_availability === "available" ||
+          s.fuel_availability === "limited",
+      );
+    } else if (this.activeFilter === "Open") {
+      currentStations = currentStations.filter((s) => s.status === "open");
+    }
+
+    // 3. Near Me Sort
+    if (
+      this.userLocation &&
+      currentStations.length > 0 &&
+      currentStations[0].distance !== undefined
+    ) {
+      currentStations.sort((a, b) => (a.distance || 0) - (b.distance || 0));
+    }
+
+    this.stations = currentStations;
+
+    // Update markers globally
     this.addStationMarkers();
 
-    // Update status
-    if (searchTerm.trim()) {
-      this.updateStatus(
-        "Found " +
-          this.stations.length +
-          ' stations matching "' +
-          searchTerm +
-          '"',
-      );
-    } else {
-      this.updateStatus("Showing all stations");
+    // Update visual list based on map bounds
+    this.updateListFromBounds();
+  }
+
+  updateListFromBounds() {
+    if (!this.map) return;
+
+    try {
+      const bounds = this.map.getBounds();
+
+      // Filter the actively filtered stations by current map bounds for the UI List
+      const visibleStations = this.stations.filter((station) => {
+        if (!station.latitude || !station.longitude) return false;
+        const latLng = L.latLng(station.latitude, station.longitude);
+        return bounds.contains(latLng);
+      });
+
+      this.renderStations(visibleStations);
+
+      // Update Top Status Message
+      if (this.searchTerm.trim() || this.activeFilter !== "All") {
+        this.updateStatus(
+          "Showing " +
+            visibleStations.length +
+            " stations matching filters in this area",
+        );
+      } else if (visibleStations.length !== this.stations.length) {
+        this.updateStatus(
+          "Showing " + visibleStations.length + " stations in this area",
+        );
+      } else {
+        this.updateStatus("Showing all stations");
+      }
+    } catch (e) {
+      console.error("Error updating list from bounds:", e);
+      this.renderStations(this.stations);
     }
   }
 
