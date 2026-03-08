@@ -78,49 +78,51 @@ class FuelStationTracker {
     const markers = cluster.getAllChildMarkers();
     const total = markers.length;
 
-    // Count stations by status and fuel availability
-    let openCount = 0;
-    let closedCount = 0;
-    let unknownCount = 0;
-    let limitedFuelCount = 0;
+    // Count stations by queue status (M1 spec)
+    let shortNoneEmptyQueueCount = 0;
+    let mediumQueueCount = 0;
+    let longQueueCount = 0;
+    let closedUnknownCount = 0;
 
     markers.forEach((marker: any) => {
       const status = marker.options.stationStatus;
-      const fuelAvailability = marker.options.fuelAvailability;
+      const queue = marker.options.queueStatus;
 
-      if (status === "open") {
-        if (fuelAvailability === "limited") {
-          limitedFuelCount++;
+      if (status !== "closed") {
+        if (queue === "long") {
+          longQueueCount++;
+        } else if (queue === "medium") {
+          mediumQueueCount++;
+        } else if (queue === "short" || queue === "none" || queue === "empty") {
+          shortNoneEmptyQueueCount++;
         } else {
-          openCount++;
+          closedUnknownCount++; // Treat unknown queue as closed/unknown for clustering
         }
-      } else if (status === "closed") {
-        closedCount++;
       } else {
-        unknownCount++;
+        closedUnknownCount++; // Closed stations
       }
     });
 
-    // Determine dominant status (>50% threshold)
-    let clusterClass = "marker-cluster-mixed";
-    const openPercent = openCount / total;
-    const closedPercent = closedCount / total;
-    const limitedPercent = limitedFuelCount / total;
-    const unknownPercent = unknownCount / total;
+    // Determine dominant queue status for cluster color
+    let colorClass = "unknown"; // Default grey
+    const longPercent = longQueueCount / total;
+    const mediumPercent = mediumQueueCount / total;
+    const shortNoneEmptyPercent = shortNoneEmptyQueueCount / total;
+    const closedUnknownPercent = closedUnknownCount / total;
 
-    if (openPercent > 0.5) {
-      clusterClass = "marker-cluster-open";
-    } else if (closedPercent > 0.5) {
-      clusterClass = "marker-cluster-closed";
-    } else if (limitedPercent > 0.5) {
-      clusterClass = "marker-cluster-limited";
-    } else if (unknownPercent > 0.5) {
-      clusterClass = "marker-cluster-unknown";
+    if (shortNoneEmptyPercent > 0.5) {
+      colorClass = "open"; // Green
+    } else if (mediumPercent > 0.5) {
+      colorClass = "limited"; // Yellow
+    } else if (longPercent > 0.5) {
+      colorClass = "closed"; // Red
+    } else if (closedUnknownPercent > 0.5) {
+      colorClass = "unknown"; // Grey
     }
 
     return L.divIcon({
-      html: "<div>" + total + "</div>",
-      className: "marker-cluster " + clusterClass,
+      html: `<div><span>${total}</span></div>`,
+      className: `marker-cluster marker-cluster-${colorClass}`,
       iconSize: L.point(40, 40),
     });
   }
