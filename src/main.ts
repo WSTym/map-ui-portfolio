@@ -314,12 +314,10 @@ class FuelStationTracker {
       });
     }
 
-    // 2. Chip Filter (Available, Open)
-    if (this.activeFilter === "Available") {
+    // 2. Chip Filter (Short Queue, Open)
+    if (this.activeFilter === "Short Queue") {
       currentStations = currentStations.filter(
-        (s) =>
-          s.fuel_availability === "available" ||
-          s.fuel_availability === "limited",
+        (s) => s.queue === "none" || s.queue === "short" || s.queue === "empty",
       );
     } else if (this.activeFilter === "Open") {
       currentStations = currentStations.filter((s) => s.status === "open");
