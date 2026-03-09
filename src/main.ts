@@ -20,6 +20,9 @@ class FuelStationTracker {
   currentY: number = 0;
   isDragging: boolean = false;
   sheetState: "collapsed" | "half" | "expanded" = "collapsed";
+  minTransform: number = 0;
+  halfTransform: number = 0;
+  maxTransform: number = 0;
 
   // TS type removed
 
@@ -196,9 +199,6 @@ class FuelStationTracker {
     const isMobile = () => window.innerWidth <= 768;
 
     let initialTransform = 0;
-    let maxTransform = 0;
-    let minTransform = 0;
-    let halfTransform = 0;
     let lastDragTime = 0;
 
     const calculateTransforms = () => {
@@ -206,8 +206,8 @@ class FuelStationTracker {
       const windowHeight = window.innerHeight;
       const sheetHeight = windowHeight * 0.85; // matches 85vh in CSS
 
-      maxTransform = 0; // fully expanded
-      halfTransform = sheetHeight - windowHeight * 0.5; // half
+      this.maxTransform = 0; // fully expanded
+      this.halfTransform = sheetHeight - windowHeight * 0.5; // half
 
       const header = this.sidebar.querySelector(".header") as HTMLElement;
       const dragHandleHeight = 24;
@@ -215,14 +215,9 @@ class FuelStationTracker {
       const headerHeight = header ? header.offsetHeight : 180;
       const visibleHeight = headerHeight + dragHandleHeight;
 
-      minTransform = sheetHeight - visibleHeight;
+      this.minTransform = sheetHeight - visibleHeight;
 
-      this.snapToState(
-        this.sheetState,
-        minTransform,
-        halfTransform,
-        maxTransform,
-      );
+      this.snapToState(this.sheetState);
     };
 
     window.addEventListener("resize", () => {
@@ -260,7 +255,7 @@ class FuelStationTracker {
       } else {
         newState = "collapsed";
       }
-      this.snapToState(newState, minTransform, halfTransform, maxTransform);
+      this.snapToState(newState);
     };
 
     const header = this.sidebar.querySelector(".header");
@@ -314,10 +309,10 @@ class FuelStationTracker {
 
       let newTransform = initialTransform + deltaY;
 
-      if (newTransform < maxTransform - 20) {
-        newTransform = maxTransform - 20;
-      } else if (newTransform > minTransform + 20) {
-        newTransform = minTransform + 20;
+      if (newTransform < this.maxTransform - 20) {
+        newTransform = this.maxTransform - 20;
+      } else if (newTransform > this.minTransform + 20) {
+        newTransform = this.minTransform + 20;
       }
 
       this.currentY = newTransform;
@@ -330,9 +325,9 @@ class FuelStationTracker {
       this.sidebar.style.transition =
         "transform 0.3s cubic-bezier(0.25, 0.8, 0.25, 1)";
 
-      const distanceToMax = Math.abs(this.currentY - maxTransform);
-      const distanceToHalf = Math.abs(this.currentY - halfTransform);
-      const distanceToMin = Math.abs(this.currentY - minTransform);
+      const distanceToMax = Math.abs(this.currentY - this.maxTransform);
+      const distanceToHalf = Math.abs(this.currentY - this.halfTransform);
+      const distanceToMin = Math.abs(this.currentY - this.minTransform);
       const minDistance = Math.min(
         distanceToMax,
         distanceToHalf,
@@ -356,7 +351,7 @@ class FuelStationTracker {
         if (minDistance === distanceToMin) newState = "collapsed";
       }
 
-      this.snapToState(newState, minTransform, halfTransform, maxTransform);
+      this.snapToState(newState);
     };
 
     this.sidebar.addEventListener("touchstart", onTouchStart, {
@@ -366,19 +361,14 @@ class FuelStationTracker {
     window.addEventListener("touchend", onTouchEnd);
   }
 
-  snapToState(
-    state: "collapsed" | "half" | "expanded",
-    minT: number,
-    halfT: number,
-    maxT: number,
-  ) {
+  snapToState(state: "collapsed" | "half" | "expanded") {
     if (!this.sidebar) return;
     this.sheetState = state;
-    let targetTransform = minT;
+    let targetTransform = this.minTransform;
 
-    if (state === "expanded") targetTransform = maxT;
-    if (state === "half") targetTransform = halfT;
-    if (state === "collapsed") targetTransform = minT;
+    if (state === "expanded") targetTransform = this.maxTransform;
+    if (state === "half") targetTransform = this.halfTransform;
+    if (state === "collapsed") targetTransform = this.minTransform;
 
     this.currentY = targetTransform;
     this.sidebar.style.transform = `translateY(${targetTransform}px)`;
@@ -722,6 +712,19 @@ class FuelStationTracker {
           .querySelectorAll(".station-card")
           .forEach((c) => c.classList.remove("active-card"));
         card.classList.add("active-card");
+
+        // Mobile snap to collapsed
+        if (window.innerWidth <= 768) {
+          // Add a small delay so other UI interactions don't override the state
+          setTimeout(() => {
+            if (this.sidebar) {
+              this.snapToState("collapsed");
+              // Explicitly set the transform to ensure it moves all the way down
+              this.sidebar.style.transform = `translateY(${this.minTransform}px)`;
+              this.currentY = this.minTransform;
+            }
+          }, 50);
+        }
 
         // Find marker
         const marker = this.markers.find(
