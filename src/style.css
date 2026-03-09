@@ -390,19 +390,70 @@ body {
     line-height: 30px;
 }
 
+/* Drag handle - Hidden on Desktop */
+.drag-handle {
+    display: none;
+}
+
 /* Mobile responsive */
 @media (max-width: 768px) {
     .app-layout {
-        flex-direction: column;
+        display: block;
+        position: relative;
+    }
+    
+    .map-container {
+        height: 100vh;
+        width: 100vw;
+        position: absolute;
+        top: 0;
+        left: 0;
     }
     
     .sidebar {
         width: 100%;
-        height: 50vh;
+        height: 85vh;
+        position: absolute;
+        bottom: 0;
+        left: 0;
         z-index: 1000;
+        border-top-left-radius: 20px;
+        border-top-right-radius: 20px;
+        box-shadow: 0 -4px 16px rgba(0,0,0,0.5);
+        /* 180px is roughly the visible height when collapsed */
+        transform: translateY(calc(85vh - 180px)); 
+        transition: transform 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
     }
     
-    .map-container {
-        height: 50vh;
+    .drag-handle {
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        width: 100%;
+        height: 24px;
+        cursor: grab;
+        flex-shrink: 0;
+        touch-action: none;
+    }
+    
+    .drag-bar {
+        width: 40px;
+        height: 5px;
+        background-color: #555;
+        border-radius: 3px;
+    }
+    
+    .header {
+        border-top-left-radius: 20px;
+        border-top-right-radius: 20px;
+        padding-top: 4px;
+    }
+
+    .legend-container {
+        bottom: auto;
+        top: 24px;
+        right: 12px;
+        padding: 12px;
+        font-size: 11px;
     }
 }

@@ -13,6 +13,14 @@ class FuelStationTracker {
   searchTerm: string = "";
   activeFilter: string = "All"; // Active chip filter
 
+  // Bottom sheet state
+  sidebar: HTMLElement | null = null;
+  dragHandle: HTMLElement | null = null;
+  startY: number = 0;
+  currentY: number = 0;
+  isDragging: boolean = false;
+  sheetState: "collapsed" | "half" | "expanded" = "collapsed";
+
   // TS type removed
 
   constructor() {
@@ -128,6 +136,8 @@ class FuelStationTracker {
   }
 
   setupEventListeners() {
+    this.setupBottomSheet();
+
     document.getElementById("locationBtn")?.addEventListener("click", () => {
       this.requestLocation();
     });
@@ -175,6 +185,207 @@ class FuelStationTracker {
         }
       });
     });
+  }
+
+  setupBottomSheet() {
+    this.sidebar = document.getElementById("sidebar");
+    this.dragHandle = document.getElementById("dragHandle");
+
+    if (!this.sidebar || !this.dragHandle) return;
+
+    const isMobile = () => window.innerWidth <= 768;
+
+    let initialTransform = 0;
+    let maxTransform = 0;
+    let minTransform = 0;
+    let halfTransform = 0;
+    let lastDragTime = 0;
+
+    const calculateTransforms = () => {
+      if (!this.sidebar) return;
+      const windowHeight = window.innerHeight;
+      const sheetHeight = windowHeight * 0.85; // matches 85vh in CSS
+
+      maxTransform = 0; // fully expanded
+      halfTransform = sheetHeight - windowHeight * 0.5; // half
+
+      const header = this.sidebar.querySelector(".header") as HTMLElement;
+      const dragHandleHeight = 24;
+      // Estimate header height around 180 if not rendered yet
+      const headerHeight = header ? header.offsetHeight : 180;
+      const visibleHeight = headerHeight + dragHandleHeight;
+
+      minTransform = sheetHeight - visibleHeight;
+
+      this.snapToState(
+        this.sheetState,
+        minTransform,
+        halfTransform,
+        maxTransform,
+      );
+    };
+
+    window.addEventListener("resize", () => {
+      if (isMobile()) {
+        calculateTransforms();
+      } else if (this.sidebar) {
+        this.sidebar.style.transform = ""; // Reset for desktop
+      }
+    });
+
+    if (isMobile()) {
+      setTimeout(calculateTransforms, 150);
+    }
+
+    const onHeaderClick = (e: Event) => {
+      if (!isMobile()) return;
+      // Prevent click action if user just dragged
+      if (Date.now() - lastDragTime < 200) return;
+
+      const target = e.target as HTMLElement;
+      // Don't toggle if clicking input or buttons inside header
+      if (
+        target.closest("input") ||
+        target.closest("button") ||
+        target.closest(".filter-chip")
+      ) {
+        return;
+      }
+
+      let newState: "collapsed" | "half" | "expanded" = "half";
+      if (this.sheetState === "collapsed") {
+        newState = "half";
+      } else if (this.sheetState === "half") {
+        newState = "expanded";
+      } else {
+        newState = "collapsed";
+      }
+      this.snapToState(newState, minTransform, halfTransform, maxTransform);
+    };
+
+    const header = this.sidebar.querySelector(".header");
+    if (header) {
+      header.addEventListener("click", onHeaderClick);
+    }
+
+    const onTouchStart = (e: TouchEvent) => {
+      if (!isMobile() || !this.sidebar) return;
+
+      const target = e.target as HTMLElement;
+      const isHeader = target.closest(".header");
+      const isHandle = target.closest(".drag-handle");
+
+      if (!isHandle && !isHeader) {
+        const stationsList = this.sidebar.querySelector(".stations-container");
+        if (stationsList && stationsList.scrollTop > 0) {
+          return;
+        }
+      }
+
+      this.isDragging = true;
+      this.sidebar.style.transition = "none";
+      this.startY = e.touches[0].clientY;
+      initialTransform = this.currentY;
+    };
+
+    const onTouchMove = (e: TouchEvent) => {
+      if (!this.isDragging || !isMobile() || !this.sidebar) return;
+
+      const stationsList = this.sidebar.querySelector(".stations-container");
+      const touchY = e.touches[0].clientY;
+      const deltaY = touchY - this.startY;
+
+      if (Math.abs(deltaY) > 5) {
+        lastDragTime = Date.now();
+      }
+
+      if (stationsList && stationsList.scrollTop > 0 && deltaY < 0) {
+        return;
+      }
+
+      if (stationsList && stationsList.scrollTop <= 0 && deltaY > 0) {
+        if (e.cancelable) e.preventDefault();
+      } else if (
+        e.target !== stationsList &&
+        !stationsList?.contains(e.target as Node)
+      ) {
+        if (e.cancelable) e.preventDefault();
+      }
+
+      let newTransform = initialTransform + deltaY;
+
+      if (newTransform < maxTransform - 20) {
+        newTransform = maxTransform - 20;
+      } else if (newTransform > minTransform + 20) {
+        newTransform = minTransform + 20;
+      }
+
+      this.currentY = newTransform;
+      this.sidebar.style.transform = `translateY(${newTransform}px)`;
+    };
+
+    const onTouchEnd = () => {
+      if (!this.isDragging || !isMobile() || !this.sidebar) return;
+      this.isDragging = false;
+      this.sidebar.style.transition =
+        "transform 0.3s cubic-bezier(0.25, 0.8, 0.25, 1)";
+
+      const distanceToMax = Math.abs(this.currentY - maxTransform);
+      const distanceToHalf = Math.abs(this.currentY - halfTransform);
+      const distanceToMin = Math.abs(this.currentY - minTransform);
+      const minDistance = Math.min(
+        distanceToMax,
+        distanceToHalf,
+        distanceToMin,
+      );
+
+      let newState: "collapsed" | "half" | "expanded" = this.sheetState;
+      const deltaY = this.currentY - initialTransform;
+
+      if (Math.abs(deltaY) > 50) {
+        if (deltaY > 0) {
+          if (this.sheetState === "expanded") newState = "half";
+          else if (this.sheetState === "half") newState = "collapsed";
+        } else {
+          if (this.sheetState === "collapsed") newState = "half";
+          else if (this.sheetState === "half") newState = "expanded";
+        }
+      } else {
+        if (minDistance === distanceToMax) newState = "expanded";
+        if (minDistance === distanceToHalf) newState = "half";
+        if (minDistance === distanceToMin) newState = "collapsed";
+      }
+
+      this.snapToState(newState, minTransform, halfTransform, maxTransform);
+    };
+
+    this.sidebar.addEventListener("touchstart", onTouchStart, {
+      passive: false,
+    });
+    window.addEventListener("touchmove", onTouchMove, { passive: false });
+    window.addEventListener("touchend", onTouchEnd);
+  }
+
+  snapToState(
+    state: "collapsed" | "half" | "expanded",
+    minT: number,
+    halfT: number,
+    maxT: number,
+  ) {
+    if (!this.sidebar) return;
+    this.sheetState = state;
+    let targetTransform = minT;
+
+    if (state === "expanded") targetTransform = maxT;
+    if (state === "half") targetTransform = halfT;
+    if (state === "collapsed") targetTransform = minT;
+
+    this.currentY = targetTransform;
+    this.sidebar.style.transform = `translateY(${targetTransform}px)`;
+
+    setTimeout(() => {
+      if (this.map) this.map.invalidateSize();
+    }, 300);
   }
 
   async loadStations() {
