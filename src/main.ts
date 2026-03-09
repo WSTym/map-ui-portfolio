@@ -412,18 +412,17 @@ class FuelStationTracker {
 
     this.stations.forEach((station) => {
       const status = station.status || "unknown";
-      const fuelAvailability = station.fuel_availability;
-      let color = "#9CA3AF"; // grey for unknown status
+      const queue = station.queue;
+      let color = "#9CA3AF"; // grey for unknown/closed status
 
-      if (status === "open") {
-        // Check fuel availability for open stations
-        if (fuelAvailability === "limited") {
-          color = "#FFBF00"; // amber for limited fuel
-        } else {
-          color = "#28a745"; // green for open
+      if (status !== "closed") {
+        if (queue === "long") {
+          color = "#dc3545"; // red
+        } else if (queue === "medium") {
+          color = "#FFBF00"; // amber/yellow
+        } else if (queue === "short" || queue === "none" || queue === "empty") {
+          color = "#28a745"; // green
         }
-      } else if (status === "closed") {
-        color = "#dc3545"; // red for closed
       }
 
       const marker = L.circleMarker([station.latitude, station.longitude], {
@@ -433,7 +432,7 @@ class FuelStationTracker {
         radius: 6,
         stationId: station.station_id,
         stationStatus: status, // Store status for clustering
-        fuelAvailability: fuelAvailability, // Store fuel availability
+        queueStatus: queue, // Store queue logic for clustering
       });
 
       const popupContent = this.createPopupContent(station);
